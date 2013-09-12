@@ -36,7 +36,9 @@ class WSGIAuthMiddleware(object):
             _strategy = self.strategies[strategy]
         except KeyError:
             raise NotFound()
-        return _strategy.request_phase(request)
+        redirect_uri = '%s://%s%s/%s/callback/' % (request.scheme, request.host, self.path_prefix, strategy)
+        return _strategy.request_phase(request, 
+                                       redirect_uri)
 
     def _callback_phase(self, request, strategy):
         try:
