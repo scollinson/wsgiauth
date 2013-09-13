@@ -14,35 +14,30 @@ class WSGIAuthMiddleware(object):
         if request.path.startswith(self.path_prefix):
             url_map = Map([
                 Rule(self.path_prefix+'/<string:strategy>/', 
-                     endpoint='request'),
+                     endpoint=self._request_phase),
                 Rule(self.path_prefix+'/<string:strategy>/callback/', 
-                     endpoint='callback'),
+                     endpoint=self._callback_phase),
             ])
 
             try:
                 endpoint, args = url_map.bind_to_environ(environ).match()
-
-                if endpoint == 'request':
-                    return self._request_phase(request, **args)(environ, start_response)
-                elif endpoint == 'callback':
-                    environ['wsgiauth'] = self._callback_phase(request, **args)
+                return endpoint(environ, start_response, request, **args)
             except HTTPException as e:
                 return e(environ, start_response)
 
         return self.app(environ, start_response)
 
-    def _request_phase(self, request, strategy):
-        try:
-            _strategy = self.strategies[strategy]
-        except KeyError:
+    def _request_phase(self, environ, start_response, request, strategy):
+        _strategy = self.strategies.get(strategy)
+        if _strategy is None:
             raise NotFound()
         redirect_uri = '%s://%s%s/%s/callback/' % (request.scheme, request.host, self.path_prefix, strategy)
         return _strategy.request_phase(request, 
-                                       redirect_uri)
+                                       redirect_uri)(environ, start_response)
 
-    def _callback_phase(self, request, strategy):
-        try:
-            _strategy = self.strategies[strategy]
-        except KeyError:
+    def _callback_phase(self, environ, start_response, request, strategy):
+        _strategy = self.strategies.get(strategy)
+        if _strategy is None:
             raise NotFound()
-        return _strategy.callback_phase(request)
+        environ['wsgiauth'] = _strategy.callback_phase(request)
+        return self.app(environ, start_response)
